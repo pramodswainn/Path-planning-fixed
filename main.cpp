@@ -13,6 +13,8 @@
 using nlohmann::json;
 using std::string;
 using std::vector;
+using namespace std;
+
 
 int main() {
   uWS::Hub h;
@@ -59,9 +61,14 @@ int main() {
   // allocate Lane marking as per specification
   // Start from user defined lane 
   int lane_id = 1;
+  //width of the lane in meters 
+  double lane_width = 4.0;
   //keep a reference velocity to ego vehicle mhr
-  double max_ref_vel = 49;
-  double min_ref_vel = 3; 
+  double max_vel = 50.0; //mph
+  double desired_speed = max_vel - 2.0; //mph -> desired velocity is always lesser than the max velocity.
+  double ref_vel = desired_speed; //mph -> reference velocity always percept based on sensor fusion data.
+  //double max_ref_vel = 49;
+  //double min_ref_vel = 3; 
   int dist_to_maintain = 30;
     // "42" at the start of the message means there's a websocket message event.
     // The 4 signifies a websocket message
@@ -125,10 +132,35 @@ int main() {
 
             if(check_car_d < (2+4*lane_id+2) && check_car_d > (2+4*lane_id-2)) {
               check_car_s += ((double)prev_size*0.02*check_speed); 
-            }
-            
+              if((check_car_s > car_s) && (gap_dist < dist_to_maintain)) {
+            //for lowe reference velocity we dont want to hit the car in front of us
+            //could also try to change lane with ref_velocity
+                cout << "check car is in same lane and gap is " << gap_dist << endl;
+                pretty_close = true;
+                change_lane = true;
+              } // end of gap
+            } //end of check_car_d
+          } // end of sensor fusion loop
 
-}
+          int shift_lane_by = 0;
+          if (change_lane) {
+            cout << "preparing for lane change" << endl;
+            vector<double> lc = lane_to_shift(sensor_fusion, lane_id, car_s, car_d, ref_vel);
+            shift_lane_by = lc[0];
+            cout << "shift lane by " << shift_lane_by << endl;
+            lane_id += shift_lane_by;
+            ref_vel +=lc[1];
+            cout << "new ref_vel after reduction by " << lc[1] << " is, ref_vel=" << ref_vel << endl;
+          }
+          if (pretty_close && shift_lane_by == 0) {
+              ref_vel -= 0.224;
+          }
+          else if(ref_vel < desired_speed) {
+              ref_vel += 0.224;
+          }
+          //create a widely spread x,y waypoint spaces at 30m
+          //later we will interpolate this point using spline and fit it with more point 
+          //that control speed.
           //END of TODO
 
           msgJson["next_x"] = next_x_vals;

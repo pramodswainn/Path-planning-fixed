@@ -8,6 +8,8 @@
 // for convenience
 using std::string;
 using std::vector;
+using namespace std;
+
 
 // Checks if the SocketIO event has JSON data.
 // If there is data the JSON object in string format will be returned,
@@ -153,5 +155,110 @@ vector<double> getXY(double s, double d, const vector<double> &maps_s,
 
   return {x,y};
 }
+vector<double> lane_to_shift(vector<vector<double>> sensor_fusion, int lane, 
+                double car_s, double car_d, double ref_vel) {
+    int shift_by = 0;
+    int cost_left = 0;
+    int cost_right = 0;
+    
+    for (int i=0; i<sensor_fusion.size(); i++) {
+      cout << "Find Lane shift: Id=" << sensor_fusion[i][0] << ", s=" 
+           << sensor_fusion[i][5] << ", d(lane)=" << sensor_fusion[i][6] 
+           << ", gap=" << ((double)sensor_fusion[i][5])-car_s << endl;
+           //if a ego vehicles in my lane
+           float d = sensor_fusion[i][6];
+           if(d < 0)
+        {
+            // check car seems to be in opposite lane, so, ignore them
+            //cout << "check car d is " << d << ", so ignoring this car" << endl;
+            continue;
+        }
+        double vx = sensor_fusion[i][3];
+        double vy = sensor_fusion[i][4];
+        double check_speed = sqrt(vx*vx+vy*vy);
+        double check_car_s = sensor_fusion[i][5];
+        double gap = check_car_s - car_s;
+
+         if (d < (2+4*lane+2) && d > (2+4*lane-2)) {
+           //ignore the car in the present lane as we already decided to change the lane
+           cout << "check car d is " << d << ", and is same as our lane " 
+           << lane << " so ignoring this car" << endl;
+         }
+          // check car seems to be in left lane
+      else if (d < (2+4*lane-2)) {
+           // check car seems to be in left lane
+            cout << "check car d is " << d 
+            << ", and is in LEFT of our lane " 
+            << lane << ". check how far it is from our car" << endl;
+         if (gap > 100) {
+          // check car is 100 units ahead of our car, so no worries (cost=1)
+            cost_left += 1; 
+         } else if (gap > 50) {
+          // check car is 50 units ahead of our car, ok to shift (cost=5)
+            cost_left += 5;
+         } else if (gap > 0) {
+          // check car is very close to our car, no to shift (cost=100)
+            cost_left += 100;
+         } else if (gap < -100) {
+          // check car is 100 units behind of our car, so be cautious, but still can shift (cost=2)
+            cost_left += 2;
+         } else if (gap < -50) {
+          // check car is 50 units ahead of our car, still ok to shift (cost=5)
+            cost_left += 5;
+         } else if (gap < 0) {
+          // check car is very close to our car, no to shift (cost=100)
+            cost_left += 100;
+         } 
+
+      } // end of car in the LEFT lane else if part 
+      else if (d > (2+4*lane+2)) {
+        // check car seems to be in RIGHT lane
+      cout << "check car d is " 
+      << d << ", and is in RIGHT of our lane " 
+      << lane << ". check how far it is from our car" << endl;
+       if (gap > 100) {
+       //check if the other car is 100 unit ahead of our car in the case (cost =1)
+       cost_right += 1;
+       } else if (gap > 50) {
+      // check car is 50 units ahead of our car, ok to shift (cost=5)
+       cost_right += 5;
+       } else if (gap > 0) {
+      // check car is very close to our car, no to shift (cost=100)
+       cost_right += 100;
+       } else if (gap < -100) {
+      // check car is 100 units behind of our car, so be cautious, but still can shift (cost=2)
+       cost_right += 2;
+       } else if (gap < -50) {
+      // check car is 50 units ahead of our car, still ok to shift (cost=5)
+       cost_right += 5;
+       } else if (gap < 0) {
+      // check car is very close to our car, no to shift (cost=100)
+       cost_right += 100;
+       }
+
+      } // end of car in the RIGHT lane else if part 
+    } // end of sensor fusion loop
+    cout << "cost_left=" << cost_left << ", cost_right=" << cost_right << endl;
+    //For left side driving
+    if (cost_left < 100) {
+        shift_by = -1;
+    } else if (cost_right < 100) {
+        shift_by = 1;
+    }
+
+     vector<double> ls;
+    ls.push_back((double)shift_by);
+    double speed_reduction_by = 0;
+    if (cost_left > 50 && cost_right > 50)
+    {
+        speed_reduction_by = -1 * ref_vel / 5;
+    }
+    ls.push_back(speed_reduction_by);
+    
+    //return shift_by;
+    return ls; 
+    }
+
+  //} 
 
 #endif  // HELPERS_H
